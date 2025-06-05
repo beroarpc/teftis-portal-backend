@@ -18,6 +18,12 @@ def login():
         return jsonify({"message": "Geçersiz kullanıcı adı veya şifre"}), 401
 
 @app.route('/dashboard-data', methods=['GET'])
+def dashboard_data():
+    return jsonify({
+        "karsilama": "Hoş geldiniz, sayın başkanım.",
+        "denetim_sayisi": 12,
+        "aktif_soruşturma": 4
+    })
 @jwt_required()
 def dashboard_data():
     return jsonify({"message": "Dashboard verisi"}), 200
