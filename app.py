@@ -25,8 +25,7 @@ def dashboard_data():
         "aktif_soruşturma": 4
     })
 @jwt_required()
-def dashboard_data():
-    return jsonify({"message": "Dashboard verisi"}), 200
+
 
 if __name__ == '__main__':
     app.run(debug=True)
