@@ -110,7 +110,7 @@ def init_db():
                 mufettis_user.set_password('1234')
                 db.session.add(mufettis_user)
             db.session.commit()
-            return "Veritabanı (sadece User tablosu) başarıyla kuruldu!"
+            return "Veritabanı tabloları başarıyla oluşturuldu/güncellendi!"
         except Exception as e:
             return f"Bir hata oluştu: {str(e)}"
 
