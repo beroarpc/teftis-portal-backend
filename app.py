@@ -116,48 +116,22 @@ def get_sorusturmalar():
         sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu})
     return jsonify(sonuc), 200
 
-@app.route('/api/sorusturmalar/<int:sorusturma_id>/onayla', methods=['POST'])
-@roller_gerekiyor('başkan')
-def onayla_sorusturma(sorusturma_id):
-    sorusturma = Sorusturma.query.get(sorusturma_id)
-    if not sorusturma: return jsonify(message="Soruşturma bulunamadı"), 404
-    sorusturma.onay_durumu = 'Onaylandı'
-    db.session.commit()
-    return jsonify(message="Soruşturma başarıyla onaylandı."), 200
-
-@app.route('/api/sorusturmalar/<int:sorusturma_id>/upload', methods=['POST'])
+@app.route('/api/sorusturmalar/<int:sorusturma_id>', methods=['GET'])
 @jwt_required()
-def upload_file(sorusturma_id):
-    if 'file' not in request.files: return jsonify(message='Dosya bulunamadı'), 400
-    file = request.files['file']
-    if file.filename == '': return jsonify(message='Dosya seçilmedi'), 400
+def get_sorusturma_detay(sorusturma_id):
     sorusturma = Sorusturma.query.get(sorusturma_id)
-    if not sorusturma: return jsonify(message='İlişkili soruşturma bulunamadı'), 404
-    try:
-        filename = secure_filename(file.filename)
-        upload_result = cloudinary.uploader.upload(file, folder=f"sorusturmalar/{sorusturma.id}", resource_type="auto")
-        yeni_dosya = Dosya(dosya_adi=filename, dosya_url=upload_result['secure_url'], public_id=upload_result['public_id'], sorusturma_id=sorusturma.id)
-        db.session.add(yeni_dosya)
-        db.session.commit()
-        return jsonify(message='Dosya başarıyla yüklendi', file_url=upload_result['secure_url']), 201
-    except Exception as e:
-        return jsonify(message=f'Dosya yüklenirken bir hata oluştu: {str(e)}'), 500
+    if not sorusturma:
+        return jsonify(message="Soruşturma bulunamadı"), 404
+    
+    dosyalar_listesi = []
+    for dosya in sorusturma.dosyalar:
+        dosyalar_listesi.append({
+            'id': dosya.id,
+            'dosya_adi': dosya.dosya_adi,
+            'dosya_url': dosya.dosya_url
+        })
 
-@app.route('/init-db-and-users')
-def init_db():
-    with app.app_context():
-        try:
-            db.create_all()
-            if User.query.filter_by(username='admin').first() is None:
-                db.session.add(User(username='admin', rol='başkan', password_hash=generate_password_hash('1234')))
-            if User.query.filter_by(username='mufettis').first() is None:
-                db.session.add(User(username='mufettis', rol='müfettiş', password_hash=generate_password_hash('1234')))
-            if User.query.filter_by(username='mufettis_yardimcisi').first() is None:
-                db.session.add(User(username='mufettis_yardimcisi', rol='müfettiş yardımcısı', password_hash=generate_password_hash('1234')))
-            db.session.commit()
-            return "Veritabanı tabloları başarıyla oluşturuldu/güncellendi!"
-        except Exception as e:
-            return f"Bir hata oluştu: {str(e)}"
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    sonuc = {
+        'id': sorusturma.id,
+        'sorusturma_no': sorusturma.sorusturma_no,
+        'konu
