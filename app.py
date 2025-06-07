@@ -128,6 +128,42 @@ def get_sorusturma_detay(sorusturma_id):
     sonuc = {'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'dosyalar': dosyalar_listesi}
     return jsonify(sonuc), 200
 
+@app.route('/api/mufettisler', methods=['GET'])
+@jwt_required()
+def get_mufettisler():
+    mufettisler = User.query.filter_by(rol='müfettiş').all()
+
+    sonuc = []
+    for mufettis in mufettisler:
+        sonuc.append({
+            'id': mufettis.id,
+            'username': mufettis.username
+        })
+    return jsonify(sonuc), 200
+
+@app.route('/api/sorusturmalar/<int:sorusturma_id>/ata', methods=['POST'])
+@roller_gerekiyor('başkan') # Bu işlemi sadece başkan yapabilir
+def ata_mufettis(sorusturma_id):
+    data = request.get_json()
+    mufettis_id = data.get('mufettis_id')
+
+    if not mufettis_id:
+        return jsonify(message="Müfettiş ID'si zorunludur."), 400
+
+    sorusturma = Sorusturma.query.get(sorusturma_id)
+    mufettis = User.query.get(mufettis_id)
+
+    if not sorusturma:
+        return jsonify(message="Soruşturma bulunamadı."), 404
+    if not mufettis or mufettis.rol != 'müfettiş':
+        return jsonify(message="Geçerli bir müfettiş bulunamadı."), 404
+
+    sorusturma.atanan_mufettis_id = mufettis_id
+    db.session.commit()
+
+    return jsonify(message=f"Soruşturma, {mufettis.username} adlı müfettişe başarıyla atandı."), 200
+
+
 @app.route('/api/sorusturmalar/<int:sorusturma_id>/onayla', methods=['POST'])
 @roller_gerekiyor('başkan')
 def onayla_sorusturma(sorusturma_id):
