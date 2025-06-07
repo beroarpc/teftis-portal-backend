@@ -149,18 +149,5 @@ def init_db():
         except Exception as e:
             return f"Bir hata oluştu: {str(e)}"
 
-@app.route('/reset-sorusturma-table')
-def reset_sorusturma_table():
-    with app.app_context():
-        try:
-            # Önce tabloyu siler
-            Sorusturma.__table__.drop(db.engine)
-            # Sonra tüm eksik tabloları yeniden oluşturur
-            db.create_all()
-            return "Sorusturma tablosu başarıyla sıfırlandı ve yeniden oluşturuldu!"
-        except Exception as e:
-            return f"Bir hata oluştu: {str(e)}"
-
-
 if __name__ == "__main__":
     app.run(debug=True)
