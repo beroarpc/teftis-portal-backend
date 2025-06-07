@@ -84,17 +84,27 @@ def create_sorusturma():
 @app.route('/api/sorusturmalar', methods=['GET'])
 @jwt_required()
 def get_sorusturmalar():
-    sorusturmalar_listesi = Sorusturma.query.order_by(Sorusturma.olusturma_tarihi.desc()).all()
-    sonuc = []
-    for sorusturma in sorusturmalar_listesi:
-        sonuc.append({
-            'id': sorusturma.id,
-            'sorusturma_no': sorusturma.sorusturma_no,
-            'konu': sorusturma.konu,
-            'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'),
-            'durum': sorusturma.durum
-        })
-    return jsonify(sonuc), 200
+    try:
+        print("--- /api/sorusturmalar isteği başladı ---")
+        
+        sorusturmalar_listesi = Sorusturma.query.all()
+        print(f"Veritabanından {len(sorusturmalar_listesi)} adet kayıt çekildi.")
+        
+        sonuc = []
+        for sorusturma in sorusturmalar_listesi:
+            sonuc.append({
+                'id': sorusturma.id,
+                'sorusturma_no': sorusturma.sorusturma_no,
+                'konu': sorusturma.konu,
+                'olusturma_tarihi': str(sorusturma.olusturma_tarihi),
+                'durum': sorusturma.durum
+            })
+            
+        print("--- /api/sorusturmalar isteği başarıyla tamamlandı ---")
+        return jsonify(sonuc), 200
+    except Exception as e:
+        print(f"!!! /api/sorusturmalar ENDPOINT'İNDE HATA OLUŞTU: {str(e)} !!!")
+        return jsonify({"message": "Sunucuda beklenmedik bir hata oluştu."}), 500
 
 @app.route('/init-db-and-users')
 def init_db():
