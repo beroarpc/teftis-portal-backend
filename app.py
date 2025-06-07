@@ -3,9 +3,11 @@ from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, get_jwt_identity
 )
 from flask_cors import CORS
+import os
 
 app = Flask(__name__)
-app.config['JWT_SECRET_KEY'] = 'bu-anahtar-guvenli-degil-lutfen-degistir'
+
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'bu-anahtar-guvenli-degil-lutfen-degistir')
 
 frontend_url = "https://teftis-portal-frontend.vercel.app"
 CORS(app, resources={r"/*": {"origins": frontend_url}}, supports_credentials=True)
@@ -20,6 +22,8 @@ users = {
 
 @app.route('/login', methods=['POST'])
 def login():
+    print(f"Login fonksiyonunda kullanilan SECRET_KEY sonu: ...{app.config['JWT_SECRET_KEY'][-5:]}")
+
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
@@ -34,15 +38,17 @@ def login():
 @app.route('/dashboard-data', methods=['GET'])
 @jwt_required()
 def dashboard_data():
+    print("\n--- YENI DASHBOARD ISTEGI ALINDI ---")
+    print(f"Gelen Istek Basliklari:\n{request.headers}")
+    print(f"Dashboard'da kullanilan SECRET_KEY sonu: ...{app.config['JWT_SECRET_KEY'][-5:]}")
+
     current_username = get_jwt_identity()
-    
     user_info = users.get(current_username)
     if not user_info:
         return jsonify({"message": "Kullanıcı bulunamadı"}), 404
 
     user_rol = user_info.get('rol', 'kullanıcı')
-
-    print(f"Yetkili istek alındı. Kullanıcı: {current_username}")
+    print(f"Yetkili istek alindi. Kullanici: {current_username}\n")
     
     return jsonify({
         "karsilama": f"Hoş geldiniz, sayın {user_rol.title()}",
@@ -50,6 +56,11 @@ def dashboard_data():
         "aktif_soruşturma": 4,
         "rol": user_rol
     }), 200
+    
+@app.errorhandler(422)
+def handle_unprocessable_entity(err):
+    print(f"!!! 422 Hatasi Alindi! Istek verisi: {request.get_data(as_text=True)}")
+    return jsonify({"msg": "Istek islenemedi (422)"}), 422
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
