@@ -87,13 +87,10 @@ def dashboard_data():
 def create_sorusturma():
     current_username = get_jwt_identity()
     user = User.query.filter_by(username=current_username).first()
-    
     data = request.get_json()
     if not data or not data.get('sorusturma_no') or not data.get('konu'):
         return jsonify({"message": "Eksik bilgi: sorusturma_no ve konu alanları zorunludur"}), 400
-    
     onay_durumu = 'Onaylandı' if user.rol == 'başkan' else 'Onay Bekliyor'
-    
     yeni_sorusturma = Sorusturma(
         sorusturma_no=data['sorusturma_no'],
         konu=data['konu'],
@@ -110,7 +107,6 @@ def onayla_sorusturma(sorusturma_id):
     sorusturma = Sorusturma.query.get(sorusturma_id)
     if not sorusturma:
         return jsonify(message="Soruşturma bulunamadı"), 404
-    
     sorusturma.onay_durumu = 'Onaylandı'
     db.session.commit()
     return jsonify(message="Soruşturma başarıyla onaylandı."), 200
@@ -152,6 +148,19 @@ def init_db():
             return "Veritabanı tabloları başarıyla oluşturuldu/güncellendi!"
         except Exception as e:
             return f"Bir hata oluştu: {str(e)}"
+
+@app.route('/reset-sorusturma-table')
+def reset_sorusturma_table():
+    with app.app_context():
+        try:
+            # Önce tabloyu siler
+            Sorusturma.__table__.drop(db.engine)
+            # Sonra tüm eksik tabloları yeniden oluşturur
+            db.create_all()
+            return "Sorusturma tablosu başarıyla sıfırlandı ve yeniden oluşturuldu!"
+        except Exception as e:
+            return f"Bir hata oluştu: {str(e)}"
+
 
 if __name__ == "__main__":
     app.run(debug=True)
