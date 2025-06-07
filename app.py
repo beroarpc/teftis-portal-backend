@@ -5,8 +5,7 @@ from flask_jwt_extended import (
 from flask_cors import CORS
 
 app = Flask(__name__)
-
-app.config['JWT_SECRET_KEY'] = 'bu-anahtar-guvenli-degil-lutfen-degistir' 
+app.config['JWT_SECRET_KEY'] = 'bu-anahtar-guvenli-degil-lutfen-degistir'
 
 frontend_url = "https://teftis-portal-frontend.vercel.app"
 CORS(app, resources={r"/*": {"origins": frontend_url}}, supports_credentials=True)
@@ -22,17 +21,12 @@ users = {
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    if not data:
-        return jsonify({"message": "JSON formatında veri gönderilmedi"}), 400
-
     username = data.get("username")
     password = data.get("password")
-
     user_data = users.get(username)
 
     if user_data and user_data["password"] == password:
-        identity_data = {"username": username, "rol": user_data["rol"]}
-        access_token = create_access_token(identity=identity_data)
+        access_token = create_access_token(identity=username)
         return jsonify(access_token=access_token), 200
     else:
         return jsonify({"message": "Geçersiz kullanıcı adı veya şifre"}), 401
@@ -40,14 +34,21 @@ def login():
 @app.route('/dashboard-data', methods=['GET'])
 @jwt_required()
 def dashboard_data():
-    current_user = get_jwt_identity()
-    print(f"Yetkili istek alındı. Kullanıcı: {current_user}")
+    current_username = get_jwt_identity()
+    
+    user_info = users.get(current_username)
+    if not user_info:
+        return jsonify({"message": "Kullanıcı bulunamadı"}), 404
+
+    user_rol = user_info.get('rol', 'kullanıcı')
+
+    print(f"Yetkili istek alındı. Kullanıcı: {current_username}")
     
     return jsonify({
-        "karsilama": f"Hoş geldiniz, sayın {current_user.get('rol', 'kullanıcı').title()}",
+        "karsilama": f"Hoş geldiniz, sayın {user_rol.title()}",
         "denetim_sayisi": 12,
         "aktif_soruşturma": 4,
-        "rol": current_user.get('rol')
+        "rol": user_rol
     }), 200
 
 if __name__ == "__main__":
