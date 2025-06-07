@@ -1,33 +1,45 @@
+import os
 from flask import Flask, request, jsonify
+from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import (
     JWTManager, create_access_token, jwt_required, get_jwt_identity
 )
-from flask_cors import CORS
-import os
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'bu-anahtar-guvenli-degil-lutfen-degistir')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'default-guvensiz-anahtar')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+jwt = JWTManager(app)
 
 frontend_url = "https://teftis-portal-frontend.vercel.app"
 CORS(app, resources={r"/*": {"origins": frontend_url}}, supports_credentials=True)
 
-jwt = JWTManager(app)
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    rol = db.Column(db.String(50), nullable=False)
 
-users = {
-    "admin": {"password": "1234", "rol": "başkan"},
-    "mufettis": {"password": "1234", "rol": "müfettiş"},
-    "mufettis_yardimcisi": {"password": "1234", "rol": "müfettiş yardımcısı"}
-}
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
     username = data.get("username")
     password = data.get("password")
-    user_data = users.get(username)
 
-    if user_data and user_data["password"] == password:
+    user = User.query.filter_by(username=username).first()
+
+    if user and user.check_password(password):
         access_token = create_access_token(identity=username)
         return jsonify(access_token=access_token), 200
     else:
@@ -37,19 +49,38 @@ def login():
 @jwt_required()
 def dashboard_data():
     current_username = get_jwt_identity()
-    user_info = users.get(current_username)
+    user = User.query.filter_by(username=current_username).first()
 
-    if not user_info:
-        return jsonify({"message": "Kullanıcı bulunamadı"}), 404
+    if not user:
+        return jsonify({"message": "Token geçersiz, kullanıcı bulunamadı"}), 404
 
-    user_rol = user_info.get('rol', 'kullanıcı')
-    
     return jsonify({
-        "karsilama": f"Hoş geldiniz, sayın {user_rol.title()}",
-        "denetim_sayisi": 12,
-        "aktif_soruşturma": 4,
-        "rol": user_rol
+        "karsilama": f"Hoş geldiniz, sayın {user.rol.title()}",
+        "denetim_sayisi": 15,
+        "aktif_soruşturma": 5,
+        "rol": user.rol
     }), 200
 
+@app.route('/init-db-and-users')
+def init_db():
+    with app.app_context():
+        try:
+            db.create_all()
+
+            if User.query.filter_by(username='admin').first() is None:
+                admin_user = User(username='admin', rol='başkan')
+                admin_user.set_password('1234')
+                db.session.add(admin_user)
+
+            if User.query.filter_by(username='mufettis').first() is None:
+                mufettis_user = User(username='mufettis', rol='müfettiş')
+                mufettis_user.set_password('1234')
+                db.session.add(mufettis_user)
+            
+            db.session.commit()
+            return "Veritabanı tabloları oluşturuldu ve başlangıç kullanıcıları eklendi!"
+        except Exception as e:
+            return f"Bir hata oluştu: {str(e)}"
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True)
