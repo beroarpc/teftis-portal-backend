@@ -122,10 +122,24 @@ def get_sorusturma_detay(sorusturma_id):
     sorusturma = Sorusturma.query.get(sorusturma_id)
     if not sorusturma:
         return jsonify(message="Soruşturma bulunamadı"), 404
+    
     dosyalar_listesi = []
     for dosya in sorusturma.dosyalar:
-        dosyalar_listesi.append({'id': dosya.id, 'dosya_adi': dosya.dosya_adi, 'dosya_url': dosya.dosya_url})
-    sonuc = {'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'dosyalar': dosyalar_listesi}
+        dosyalar_listesi.append({
+            'id': dosya.id,
+            'dosya_adi': dosya.dosya_adi,
+            'dosya_url': dosya.dosya_url
+        })
+
+    sonuc = {
+        'id': sorusturma.id,
+        'sorusturma_no': sorusturma.sorusturma_no,
+        'konu': sorusturma.konu,
+        'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'),
+        'durum': sorusturma.durum,
+        'onay_durumu': sorusturma.onay_durumu,
+        'dosyalar': dosyalar_listesi
+    }
     return jsonify(sonuc), 200
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>/onayla', methods=['POST'])
