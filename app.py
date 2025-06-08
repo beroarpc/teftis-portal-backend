@@ -122,10 +122,9 @@ def get_sorusturma_detay(sorusturma_id):
     sorusturma = Sorusturma.query.get(sorusturma_id)
     if not sorusturma:
         return jsonify(message="Soruşturma bulunamadı"), 404
-    dosyalar_listesi = []
-    for dosya in sorusturma.dosyalar:
-        dosyalar_listesi.append({'id': dosya.id, 'dosya_adi': dosya.dosya_adi, 'dosya_url': dosya.dosya_url})
-    sonuc = {'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'dosyalar': dosyalar_listesi}
+    dosyalar_listesi = [{'id': dosya.id, 'dosya_adi': dosya.dosya_adi, 'dosya_url': dosya.dosya_url} for dosya in sorusturma.dosyalar]
+    atanan_mufettis_adi = sorusturma.atanan_mufettis.username if sorusturma.atanan_mufettis else None
+    sonuc = {'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'dosyalar': dosyalar_listesi, 'atanan_mufettis': atanan_mufettis_adi}
     return jsonify(sonuc), 200
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>/onayla', methods=['POST'])
@@ -154,6 +153,34 @@ def upload_file(sorusturma_id):
         return jsonify(message='Dosya başarıyla yüklendi', file_url=upload_result['secure_url']), 201
     except Exception as e:
         return jsonify(message=f'Dosya yüklenirken bir hata oluştu: {str(e)}'), 500
+
+@app.route('/api/mufettisler', methods=['GET'])
+@jwt_required()
+def get_mufettisler():
+    try:
+        mufettisler = User.query.filter_by(rol='müfettiş').all()
+        sonuc = [{'id': mufettis.id, 'username': mufettis.username} for mufettis in mufettisler]
+        return jsonify(sonuc), 200
+    except Exception as e:
+        print(f"!!! /api/mufettisler ENDPOINT'İNDE HATA OLUŞTU: {str(e)} !!!")
+        return jsonify({"message": "Sunucuda beklenmedik bir hata oluştu."}), 500
+
+@app.route('/api/sorusturmalar/<int:sorusturma_id>/ata', methods=['POST'])
+@roller_gerekiyor('başkan')
+def ata_mufettis(sorusturma_id):
+    data = request.get_json()
+    mufettis_id = data.get('mufettis_id')
+    if not mufettis_id:
+        return jsonify(message="Müfettiş ID'si zorunludur."), 400
+    sorusturma = Sorusturma.query.get(sorusturma_id)
+    mufettis = User.query.get(mufettis_id)
+    if not sorusturma:
+        return jsonify(message="Soruşturma bulunamadı."), 404
+    if not mufettis or mufettis.rol != 'müfettiş':
+        return jsonify(message="Geçerli bir müfettiş bulunamadı."), 404
+    sorusturma.atanan_mufettis_id = mufettis_id
+    db.session.commit()
+    return jsonify(message=f"Soruşturma, {mufettis.username} adlı müfettişe başarıyla atandı."), 200
 
 @app.route('/init-db-and-users')
 def init_db():
