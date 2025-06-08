@@ -26,7 +26,7 @@ cloudinary.config(
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
-frontend_url = "https://teftis-portal-frontend-5u7j.vercel.app"
+frontend_url = "https://teftis-portal-frontend-mzj1.vercel.app"
 CORS(app, resources={r"/*": {"origins": frontend_url}}, supports_credentials=True)
 
 def roller_gerekiyor(*roller):
@@ -73,6 +73,48 @@ class Dosya(db.Model):
     yukleme_tarihi = db.Column(db.DateTime, server_default=db.func.now())
     sorusturma_id = db.Column(db.Integer, db.ForeignKey('sorusturma.id'), nullable=False)
 
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+    user = User.query.filter_by(username=username).first()
+    if user and user.check_password(password):
+        access_token = create_access_token(identity=username)
+        return jsonify(access_token=access_token), 200
+    else:
+        return jsonify({"message": "Geçersiz kullanıcı adı veya şifre"}), 401
+
+@app.route('/dashboard-data', methods=['GET'])
+@jwt_required()
+def dashboard_data():
+    current_username = get_jwt_identity()
+    user = User.query.filter_by(username=current_username).first()
+    if not user: return jsonify(message="Token geçersiz, kullanıcı bulunamadı"), 404
+    return jsonify(karsilama=f"Hoş geldiniz, sayın {user.rol.title()}", denetim_sayisi=15, aktif_soruşturma=5, rol=user.rol), 200
+
+@app.route('/api/sorusturmalar', methods=['POST'])
+@roller_gerekiyor('başkan', 'müfettiş')
+def create_sorusturma():
+    current_username = get_jwt_identity()
+    user = User.query.filter_by(username=current_username).first()
+    data = request.get_json()
+    if not data or not data.get('sorusturma_no') or not data.get('konu'):
+        return jsonify(message="Eksik bilgi: sorusturma_no ve konu alanları zorunludur"), 400
+    onay_durumu = 'Onaylandı' if user.rol == 'başkan' else 'Onay Bekliyor'
+    yeni_sorusturma = Sorusturma(sorusturma_no=data['sorusturma_no'], konu=data['konu'], durum=data.get('durum', 'Açık'), onay_durumu=onay_durumu)
+    db.session.add(yeni_sorusturma)
+    db.session.commit()
+    return jsonify(message="Soruşturma başarıyla oluşturuldu!", id=yeni_sorusturma.id), 201
+
+@app.route('/api/sorusturmalar', methods=['GET'])
+@jwt_required()
+def get_sorusturmalar():
+    sorusturmalar_listesi = Sorusturma.query.order_by(Sorusturma.olusturma_tarihi.desc()).all()
+    sonuc = []
+    for sorusturma in sorusturmalar_listesi:
+        sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu})
+    return jsonify(sonuc), 200
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>', methods=['GET'])
 @jwt_required()
@@ -80,44 +122,54 @@ def get_sorusturma_detay(sorusturma_id):
     sorusturma = Sorusturma.query.get(sorusturma_id)
     if not sorusturma:
         return jsonify(message="Soruşturma bulunamadı"), 404
-    
-    dosyalar_listesi = [{'id': dosya.id, 'dosya_adi': dosya.dosya_adi, 'dosya_url': dosya.dosya_url} for dosya in sorusturma.dosyalar]
-    
-    atanan_mufettis_adi = sorusturma.atanan_mufettis.username if sorusturma.atanan_mufettis else None
-
-    sonuc = {
-        'id': sorusturma.id,
-        'sorusturma_no': sorusturma.sorusturma_no,
-        'konu': sorusturma.konu,
-        'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'),
-        'durum': sorusturma.durum,
-        'onay_durumu': sorusturma.onay_durumu,
-        'dosyalar': dosyalar_listesi,
-        'atanan_mufettis': atanan_mufettis_adi # Yeni alan
-    }
+    dosyalar_listesi = []
+    for dosya in sorusturma.dosyalar:
+        dosyalar_listesi.append({'id': dosya.id, 'dosya_adi': dosya.dosya_adi, 'dosya_url': dosya.dosya_url})
+    sonuc = {'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'dosyalar': dosyalar_listesi}
     return jsonify(sonuc), 200
 
-
-@app.route('/api/mufettisler', methods=['GET'])
-@jwt_required()
-def get_mufettisler():
-    mufettisler = User.query.filter_by(rol='müfettiş').all()
-    sonuc = [{'id': mufettis.id, 'username': mufettis.username} for mufettis in mufettisler]
-    return jsonify(sonuc), 200
-
-@app.route('/api/sorusturmalar/<int:sorusturma_id>/ata', methods=['POST'])
+@app.route('/api/sorusturmalar/<int:sorusturma_id>/onayla', methods=['POST'])
 @roller_gerekiyor('başkan')
-def ata_mufettis(sorusturma_id):
-    data = request.get_json()
-    mufettis_id = data.get('mufettis_id')
-    if not mufettis_id:
-        return jsonify(message="Müfettiş ID'si zorunludur."), 400
+def onayla_sorusturma(sorusturma_id):
     sorusturma = Sorusturma.query.get(sorusturma_id)
-    mufettis = User.query.get(mufettis_id)
-    if not sorusturma:
-        return jsonify(message="Soruşturma bulunamadı."), 404
-    if not mufettis or mufettis.rol != 'müfettiş':
-        return jsonify(message="Geçerli bir müfettiş bulunamadı."), 404
-    sorusturma.atanan_mufettis_id = mufettis_id
+    if not sorusturma: return jsonify(message="Soruşturma bulunamadı"), 404
+    sorusturma.onay_durumu = 'Onaylandı'
     db.session.commit()
-    return jsonify(message=f"Soruşturma, {mufettis.username} adlı müfettişe başarıyla atandı."), 200
+    return jsonify(message="Soruşturma başarıyla onaylandı."), 200
+
+@app.route('/api/sorusturmalar/<int:sorusturma_id>/upload', methods=['POST'])
+@jwt_required()
+def upload_file(sorusturma_id):
+    if 'file' not in request.files: return jsonify(message='Dosya bulunamadı'), 400
+    file = request.files['file']
+    if file.filename == '': return jsonify(message='Dosya seçilmedi'), 400
+    sorusturma = Sorusturma.query.get(sorusturma_id)
+    if not sorusturma: return jsonify(message='İlişkili soruşturma bulunamadı'), 404
+    try:
+        filename = secure_filename(file.filename)
+        upload_result = cloudinary.uploader.upload(file, folder=f"sorusturmalar/{sorusturma.id}", resource_type="auto")
+        yeni_dosya = Dosya(dosya_adi=filename, dosya_url=upload_result['secure_url'], public_id=upload_result['public_id'], sorusturma_id=sorusturma.id)
+        db.session.add(yeni_dosya)
+        db.session.commit()
+        return jsonify(message='Dosya başarıyla yüklendi', file_url=upload_result['secure_url']), 201
+    except Exception as e:
+        return jsonify(message=f'Dosya yüklenirken bir hata oluştu: {str(e)}'), 500
+
+@app.route('/init-db-and-users')
+def init_db():
+    with app.app_context():
+        try:
+            db.create_all()
+            if User.query.filter_by(username='admin').first() is None:
+                db.session.add(User(username='admin', rol='başkan', password_hash=generate_password_hash('1234')))
+            if User.query.filter_by(username='mufettis').first() is None:
+                db.session.add(User(username='mufettis', rol='müfettiş', password_hash=generate_password_hash('1234')))
+            if User.query.filter_by(username='mufettis_yardimcisi').first() is None:
+                db.session.add(User(username='mufettis_yardimcisi', rol='müfettiş yardımcısı', password_hash=generate_password_hash('1234')))
+            db.session.commit()
+            return "Veritabanı tabloları başarıyla oluşturuldu/güncellendi!"
+        except Exception as e:
+            return f"Bir hata oluştu: {str(e)}"
+
+if __name__ == "__main__":
+    app.run(debug=True)
