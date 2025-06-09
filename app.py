@@ -27,11 +27,11 @@ db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
 origins = [
-    "https://teftis-portal-frontend-mzj1.vercel.app", # Canlı Vercel Adresi
-    "http://localhost:3000"  # Sizin yerel bilgisayarınız
+    "https://teftis-portal-frontend.vercel.app",
+    "https://teftis-portal-frontend-mzj1.vercel.app",
+    "http://localhost:3000"
 ]
 CORS(app, resources={r"/*": {"origins": origins}}, supports_credentials=True)
-
 
 def roller_gerekiyor(*roller):
     def wrapper(fn):
