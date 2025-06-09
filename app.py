@@ -26,8 +26,12 @@ cloudinary.config(
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
-frontend_url = "https://teftis-portal-frontend-mzj1.vercel.app"
-CORS(app, resources={r"/*": {"origins": frontend_url}}, supports_credentials=True)
+origins = [
+    "https://teftis-portal-frontend-mzj1.vercel.app", # Canlı Vercel Adresi
+    "http://localhost:3000"  # Sizin yerel bilgisayarınız
+]
+CORS(app, resources={r"/*": {"origins": origins}}, supports_credentials=True)
+
 
 def roller_gerekiyor(*roller):
     def wrapper(fn):
