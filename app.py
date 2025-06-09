@@ -69,6 +69,15 @@ class Sorusturma(db.Model):
     atanan_mufettis = db.relationship('User', backref=db.backref('sorusturmalar', lazy=True))
     dosyalar = db.relationship('Dosya', backref='sorusturma', lazy=True, cascade="all, delete-orphan")
 
+class Personel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sicil_no = db.Column(db.String(100), unique=True, nullable=False)
+    ad = db.Column(db.String(100), nullable=False)
+    soyad = db.Column(db.String(100), nullable=False)
+    unvan = db.Column(db.String(150))
+    ise_baslama_tarihi = db.Column(db.Date)
+    aktif_mi = db.Column(db.Boolean, default=True, nullable=False)
+
 class Dosya(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     dosya_adi = db.Column(db.String(200), nullable=False)
@@ -201,6 +210,69 @@ def init_db():
             return "Veritabanı tabloları başarıyla oluşturuldu/güncellendi!"
         except Exception as e:
             return f"Bir hata oluştu: {str(e)}"
+
+@app.route('/api/personel', methods=['POST'])
+@roller_gerekiyor('başkan') 
+def create_personel():
+    data = request.get_json()
+    if not data or not data.get('sicil_no') or not data.get('ad') or not data.get('soyad'):
+        return jsonify(message="Sicil No, Ad ve Soyad alanları zorunludur"), 400
+
+    yeni_personel = Personel(
+        sicil_no=data['sicil_no'],
+        ad=data['ad'],
+        soyad=data['soyad'],
+        unvan=data.get('unvan')
+    )
+    db.session.add(yeni_personel)
+    db.session.commit()
+    return jsonify(message="Personel başarıyla eklendi."), 201
+
+@app.route('/api/personel', methods=['GET'])
+@jwt_required() 
+def get_personel_listesi():
+    personeller = Personel.query.all()
+    sonuc = []
+    for p in personeller:
+        sonuc.append({
+            'id': p.id,
+            'sicil_no': p.sicil_no,
+            'ad': p.ad,
+            'soyad': p.soyad,
+            'unvan': p.unvan,
+            'aktif_mi': p.aktif_mi
+        })
+    return jsonify(sonuc), 200
+
+@app.route('/api/personel/<int:personel_id>', methods=['PUT'])
+@roller_gerekiyor('başkan') 
+def update_personel(personel_id):
+    personel = Personel.query.get(personel_id)
+    if not personel:
+        return jsonify(message="Personel bulunamadı"), 404
+
+    data = request.get_json()
+    personel.sicil_no = data.get('sicil_no', personel.sicil_no)
+    personel.ad = data.get('ad', personel.ad)
+    personel.soyad = data.get('soyad', personel.soyad)
+    personel.unvan = data.get('unvan', personel.unvan)
+    personel.aktif_mi = data.get('aktif_mi', personel.aktif_mi)
+
+    db.session.commit()
+    return jsonify(message="Personel bilgileri güncellendi."), 200
+
+@app.route('/api/personel/<int:personel_id>', methods=['DELETE'])
+@roller_gerekiyor('başkan') # Sadece başkan silebilir
+def delete_personel(personel_id):
+    personel = Personel.query.get(personel_id)
+    if not personel:
+        return jsonify(message="Personel bulunamadı"), 404
+
+    personel.aktif_mi = False
+    db.session.commit()
+    return jsonify(message="Personel kaydı pasif hale getirildi."), 200
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)
