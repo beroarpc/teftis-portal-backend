@@ -65,8 +65,10 @@ class Sorusturma(db.Model):
     olusturma_tarihi = db.Column(db.DateTime, server_default=db.func.now())
     durum = db.Column(db.String(50), default='Açık')
     onay_durumu = db.Column(db.String(50), nullable=False, default='Onay Bekliyor')
+    personel_id = db.Column(db.Integer, db.ForeignKey('personel.id'), nullable=True)
+    hakkindaki_personel = db.relationship('Personel', backref=db.backref('sorusturmalar', lazy=True))
     atanan_mufettis_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    atanan_mufettis = db.relationship('User', backref=db.backref('sorusturmalar', lazy=True))
+    atanan_mufettis = db.relationship('User', backref=db.backref('atanan_sorusturmalar', lazy=True))
     dosyalar = db.relationship('Dosya', backref='sorusturma', lazy=True, cascade="all, delete-orphan")
 
 class Dosya(db.Model):
@@ -109,13 +111,19 @@ def dashboard_data():
 @app.route('/api/sorusturmalar', methods=['POST'])
 @roller_gerekiyor('başkan', 'müfettiş')
 def create_sorusturma():
-    current_username = get_jwt_identity()
-    user = User.query.filter_by(username=current_username).first()
     data = request.get_json()
     if not data or not data.get('sorusturma_no') or not data.get('konu'):
         return jsonify(message="Eksik bilgi: sorusturma_no ve konu alanları zorunludur"), 400
+    current_username = get_jwt_identity()
+    user = User.query.filter_by(username=current_username).first()
     onay_durumu = 'Onaylandı' if user.rol == 'başkan' else 'Onay Bekliyor'
-    yeni_sorusturma = Sorusturma(sorusturma_no=data['sorusturma_no'], konu=data['konu'], durum=data.get('durum', 'Açık'), onay_durumu=onay_durumu)
+    yeni_sorusturma = Sorusturma(
+        sorusturma_no=data['sorusturma_no'],
+        konu=data['konu'],
+        durum=data.get('durum', 'Açık'),
+        onay_durumu=onay_durumu,
+        personel_id=data.get('personel_id')
+    )
     db.session.add(yeni_sorusturma)
     db.session.commit()
     return jsonify(message="Soruşturma başarıyla oluşturuldu!", id=yeni_sorusturma.id), 201
@@ -126,7 +134,16 @@ def get_sorusturmalar():
     sorusturmalar_listesi = Sorusturma.query.order_by(Sorusturma.olusturma_tarihi.desc()).all()
     sonuc = []
     for sorusturma in sorusturmalar_listesi:
-        sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu})
+        personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
+        sonuc.append({
+            'id': sorusturma.id,
+            'sorusturma_no': sorusturma.sorusturma_no,
+            'konu': sorusturma.konu,
+            'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'),
+            'durum': sorusturma.durum,
+            'onay_durumu': sorusturma.onay_durumu,
+            'hakkindaki_personel': personel_adi
+        })
     return jsonify(sonuc), 200
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>', methods=['GET'])
@@ -137,7 +154,18 @@ def get_sorusturma_detay(sorusturma_id):
         return jsonify(message="Soruşturma bulunamadı"), 404
     dosyalar_listesi = [{'id': dosya.id, 'dosya_adi': dosya.dosya_adi, 'dosya_url': dosya.dosya_url} for dosya in sorusturma.dosyalar]
     atanan_mufettis_adi = sorusturma.atanan_mufettis.username if sorusturma.atanan_mufettis else None
-    sonuc = {'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'dosyalar': dosyalar_listesi, 'atanan_mufettis': atanan_mufettis_adi}
+    personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
+    sonuc = {
+        'id': sorusturma.id,
+        'sorusturma_no': sorusturma.sorusturma_no,
+        'konu': sorusturma.konu,
+        'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'),
+        'durum': sorusturma.durum,
+        'onay_durumu': sorusturma.onay_durumu,
+        'dosyalar': dosyalar_listesi,
+        'atanan_mufettis': atanan_mufettis_adi,
+        'hakkindaki_personel': personel_adi
+    }
     return jsonify(sonuc), 200
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>/onayla', methods=['POST'])
