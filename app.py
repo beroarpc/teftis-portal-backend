@@ -284,5 +284,23 @@ def init_db():
         except Exception as e:
             return f"Bir hata oluştu: {str(e)}"
 
+@app.route('/reset-all-tables-danger')
+def reset_all_tables_danger():
+    with app.app_context():
+        try:
+            db.drop_all()
+            db.create_all()
+            if User.query.filter_by(username='admin').first() is None:
+                db.session.add(User(username='admin', rol='başkan', password_hash=generate_password_hash('1234')))
+            if User.query.filter_by(username='mufettis').first() is None:
+                db.session.add(User(username='mufettis', rol='müfettiş', password_hash=generate_password_hash('1234')))
+            if User.query.filter_by(username='mufettis_yardimcisi').first() is None:
+                db.session.add(User(username='mufettis_yardimcisi', rol='müfettiş yardımcısı', password_hash=generate_password_hash('1234')))
+            db.session.commit()
+            return "DİKKAT! Tüm tablolar silindi ve en güncel yapılarıyla yeniden oluşturuldu. Başlangıç kullanıcıları eklendi."
+        except Exception as e:
+            return f"Bir hata oluştu: {str(e)}"
+
+
 if __name__ == "__main__":
     app.run(debug=True)
