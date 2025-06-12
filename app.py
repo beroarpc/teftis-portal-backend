@@ -10,6 +10,7 @@ from functools import wraps
 import cloudinary
 import cloudinary.uploader
 from werkzeug.utils import secure_filename
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -117,13 +118,7 @@ def create_sorusturma():
     current_username = get_jwt_identity()
     user = User.query.filter_by(username=current_username).first()
     onay_durumu = 'Onaylandı' if user.rol == 'başkan' else 'Onay Bekliyor'
-    yeni_sorusturma = Sorusturma(
-        sorusturma_no=data['sorusturma_no'],
-        konu=data['konu'],
-        durum=data.get('durum', 'Açık'),
-        onay_durumu=onay_durumu,
-        personel_id=data.get('personel_id')
-    )
+    yeni_sorusturma = Sorusturma(sorusturma_no=data['sorusturma_no'], konu=data['konu'], durum=data.get('durum', 'Açık'), onay_durumu=onay_durumu, personel_id=data.get('personel_id'))
     db.session.add(yeni_sorusturma)
     db.session.commit()
     return jsonify(message="Soruşturma başarıyla oluşturuldu!", id=yeni_sorusturma.id), 201
@@ -135,15 +130,7 @@ def get_sorusturmalar():
     sonuc = []
     for sorusturma in sorusturmalar_listesi:
         personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
-        sonuc.append({
-            'id': sorusturma.id,
-            'sorusturma_no': sorusturma.sorusturma_no,
-            'konu': sorusturma.konu,
-            'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'),
-            'durum': sorusturma.durum,
-            'onay_durumu': sorusturma.onay_durumu,
-            'hakkindaki_personel': personel_adi
-        })
+        sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'hakkindaki_personel': personel_adi})
     return jsonify(sonuc), 200
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>', methods=['GET'])
@@ -155,17 +142,7 @@ def get_sorusturma_detay(sorusturma_id):
     dosyalar_listesi = [{'id': dosya.id, 'dosya_adi': dosya.dosya_adi, 'dosya_url': dosya.dosya_url} for dosya in sorusturma.dosyalar]
     atanan_mufettis_adi = sorusturma.atanan_mufettis.username if sorusturma.atanan_mufettis else None
     personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
-    sonuc = {
-        'id': sorusturma.id,
-        'sorusturma_no': sorusturma.sorusturma_no,
-        'konu': sorusturma.konu,
-        'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'),
-        'durum': sorusturma.durum,
-        'onay_durumu': sorusturma.onay_durumu,
-        'dosyalar': dosyalar_listesi,
-        'atanan_mufettis': atanan_mufettis_adi,
-        'hakkindaki_personel': personel_adi
-    }
+    sonuc = {'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'dosyalar': dosyalar_listesi, 'atanan_mufettis': atanan_mufettis_adi, 'hakkindaki_personel': personel_adi}
     return jsonify(sonuc), 200
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>/onayla', methods=['POST'])
@@ -203,8 +180,7 @@ def get_mufettisler():
         sonuc = [{'id': mufettis.id, 'username': mufettis.username} for mufettis in mufettisler]
         return jsonify(sonuc), 200
     except Exception as e:
-        print(f"!!! /api/mufettisler ENDPOINT'İNDE HATA OLUŞTU: {str(e)} !!!")
-        return jsonify({"message": "Sunucuda beklenmedik bir hata oluştu."}), 500
+        return jsonify(message=f"Sunucuda bir hata oluştu: {str(e)}"), 500
 
 @app.route('/api/sorusturmalar/<int:sorusturma_id>/ata', methods=['POST'])
 @roller_gerekiyor('başkan')
@@ -215,10 +191,8 @@ def ata_mufettis(sorusturma_id):
         return jsonify(message="Müfettiş ID'si zorunludur."), 400
     sorusturma = Sorusturma.query.get(sorusturma_id)
     mufettis = User.query.get(mufettis_id)
-    if not sorusturma:
-        return jsonify(message="Soruşturma bulunamadı."), 404
-    if not mufettis or mufettis.rol != 'müfettiş':
-        return jsonify(message="Geçerli bir müfettiş bulunamadı."), 404
+    if not sorusturma: return jsonify(message="Soruşturma bulunamadı."), 404
+    if not mufettis or mufettis.rol != 'müfettiş': return jsonify(message="Geçerli bir müfettiş bulunamadı."), 404
     sorusturma.atanan_mufettis_id = mufettis_id
     db.session.commit()
     return jsonify(message=f"Soruşturma, {mufettis.username} adlı müfettişe başarıyla atandı."), 200
@@ -247,8 +221,7 @@ def get_personel_listesi():
 @roller_gerekiyor('başkan')
 def update_personel(personel_id):
     personel = Personel.query.get(personel_id)
-    if not personel:
-        return jsonify(message="Personel bulunamadı"), 404
+    if not personel: return jsonify(message="Personel bulunamadı"), 404
     data = request.get_json()
     personel.sicil_no = data.get('sicil_no', personel.sicil_no)
     personel.ad = data.get('ad', personel.ad)
@@ -262,11 +235,32 @@ def update_personel(personel_id):
 @roller_gerekiyor('başkan')
 def delete_personel(personel_id):
     personel = Personel.query.get(personel_id)
-    if not personel:
-        return jsonify(message="Personel bulunamadı"), 404
+    if not personel: return jsonify(message="Personel bulunamadı"), 404
     personel.aktif_mi = False
     db.session.commit()
     return jsonify(message="Personel kaydı pasif hale getirildi."), 200
+
+@app.route('/api/rapor', methods=['GET'])
+@jwt_required()
+def get_report():
+    personel_id = request.args.get('personel_id', type=int)
+    baslangic_tarihi_str = request.args.get('baslangic')
+    bitis_tarihi_str = request.args.get('bitis')
+    query = Sorusturma.query
+    if personel_id:
+        query = query.filter(Sorusturma.personel_id == personel_id)
+    if baslangic_tarihi_str:
+        baslangic_tarihi = datetime.strptime(baslangic_tarihi_str, '%Y-%m-%d')
+        query = query.filter(Sorusturma.olusturma_tarihi >= baslangic_tarihi)
+    if bitis_tarihi_str:
+        bitis_tarihi = datetime.strptime(bitis_tarihi_str, '%Y-%m-%d')
+        query = query.filter(Sorusturma.olusturma_tarihi <= bitis_tarihi.replace(hour=23, minute=59, second=59))
+    sorusturmalar_listesi = query.order_by(Sorusturma.olusturma_tarihi.desc()).all()
+    sonuc = []
+    for sorusturma in sorusturmalar_listesi:
+        personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
+        sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'hakkindaki_personel': personel_adi})
+    return jsonify(sonuc), 200
     
 @app.route('/init-db-and-users')
 def init_db():
@@ -283,24 +277,6 @@ def init_db():
             return "Veritabanı tabloları başarıyla oluşturuldu/güncellendi!"
         except Exception as e:
             return f"Bir hata oluştu: {str(e)}"
-
-@app.route('/reset-all-tables-danger')
-def reset_all_tables_danger():
-    with app.app_context():
-        try:
-            db.drop_all()
-            db.create_all()
-            if User.query.filter_by(username='admin').first() is None:
-                db.session.add(User(username='admin', rol='başkan', password_hash=generate_password_hash('1234')))
-            if User.query.filter_by(username='mufettis').first() is None:
-                db.session.add(User(username='mufettis', rol='müfettiş', password_hash=generate_password_hash('1234')))
-            if User.query.filter_by(username='mufettis_yardimcisi').first() is None:
-                db.session.add(User(username='mufettis_yardimcisi', rol='müfettiş yardımcısı', password_hash=generate_password_hash('1234')))
-            db.session.commit()
-            return "DİKKAT! Tüm tablolar silindi ve en güncel yapılarıyla yeniden oluşturuldu. Başlangıç kullanıcıları eklendi."
-        except Exception as e:
-            return f"Bir hata oluştu: {str(e)}"
-
 
 if __name__ == "__main__":
     app.run(debug=True)
