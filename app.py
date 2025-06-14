@@ -103,6 +103,39 @@ class Ceza(db.Model):
     personel_id = db.Column(db.Integer, db.ForeignKey('personel.id'), nullable=False)
     alan_personel = db.relationship('Personel', backref=db.backref('cezalar', lazy=True))
 
+@app.route('/api/sorusturmalar/<int:sorusturma_id>/ceza-ekle', methods=['POST'])
+@roller_gerekiyor('başkan')
+def add_ceza_to_sorusturma(sorusturma_id):
+    sorusturma = Sorusturma.query.get(sorusturma_id)
+    if not sorusturma:
+        return jsonify(message="Soruşturma bulunamadı."), 404
+    if not sorusturma.hakkindaki_personel:
+        return jsonify(message="Bu soruşturma bir personele bağlı değil, ceza eklenemez."), 400
+    
+    data = request.get_json()
+    ceza_turu = data.get('ceza_turu')
+    verilme_tarihi_str = data.get('verilme_tarihi')
+    aciklama = data.get('aciklama')
+    
+    if not all([ceza_turu, verilme_tarihi_str]):
+        return jsonify(message="Ceza türü ve verilme tarihi zorunludur."), 400
+        
+    try:
+        verilme_tarihi = datetime.strptime(verilme_tarihi_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify(message="Tarih formatı geçersiz. Lütfen YYYY-MM-DD formatında girin."), 400
+
+    yeni_ceza = Ceza(
+        ceza_turu=ceza_turu,
+        aciklama=aciklama,
+        verilme_tarihi=verilme_tarihi,
+        sorusturma_id=sorusturma.id,
+        personel_id=sorusturma.personel_id
+    )
+    db.session.add(yeni_ceza)
+    db.session.commit()
+    return jsonify(message="Ceza başarıyla eklendi."), 201
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -139,7 +172,6 @@ def create_user():
         return jsonify(message="Kullanıcı adı, şifre ve rol zorunludur."), 400
     if User.query.filter_by(username=username).first():
         return jsonify(message="Bu kullanıcı adı zaten mevcut."), 409
-    
     new_user = User(username=username, rol=rol)
     new_user.set_password(password)
     db.session.add(new_user)
@@ -182,7 +214,7 @@ def get_sorusturmalar():
         personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
         sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'hakkindaki_personel': personel_adi})
     return jsonify(sonuc), 200
-        
+
 @app.route('/api/sorusturmalar/<int:sorusturma_id>', methods=['GET'])
 @jwt_required()
 def get_sorusturma_detay(sorusturma_id):
@@ -304,29 +336,27 @@ def delete_personel(personel_id):
     personel.aktif_mi = False
     db.session.commit()
     return jsonify(message="Personel kaydı pasif hale getirildi."), 200
-
-@app.route('/api/sorusturmalar/<int:sorusturma_id>/ceza-ekle', methods=['POST'])
-@roller_gerekiyor('başkan')
-def add_ceza_to_sorusturma(sorusturma_id):
-    sorusturma = Sorusturma.query.get(sorusturma_id)
-    if not sorusturma:
-        return jsonify(message="Soruşturma bulunamadı."), 404
-    if not sorusturma.hakkindaki_personel:
-        return jsonify(message="Bu soruşturma bir personele bağlı değil, ceza eklenemez."), 400
-    data = request.get_json()
-    ceza_turu = data.get('ceza_turu')
-    verilme_tarihi_str = data.get('verilme_tarihi')
-    aciklama = data.get('aciklama')
-    if not all([ceza_turu, verilme_tarihi_str]):
-        return jsonify(message="Ceza türü ve verilme tarihi zorunludur."), 400
-    try:
-        verilme_tarihi = datetime.strptime(verilme_tarihi_str, '%Y-%m-%d').date()
-    except ValueError:
-        return jsonify(message="Tarih formatı geçersiz. Lütfen YYYY-MM-DD formatında girin."), 400
-    yeni_ceza = Ceza(ceza_turu=ceza_turu, aciklama=aciklama, verilme_tarihi=verilme_tarihi, sorusturma_id=sorusturma.id, personel_id=sorusturma.personel_id)
-    db.session.add(yeni_ceza)
-    db.session.commit()
-    return jsonify(message="Ceza başarıyla eklendi."), 201
+    
+@app.route('/api/rapor', methods=['GET'])
+@jwt_required()
+def get_report():
+    personel_id = request.args.get('personel_id', type=int)
+    baslangic_tarihi_str = request.args.get('baslangic')
+    bitis_tarihi_str = request.args.get('bitis')
+    query = Sorusturma.query
+    if personel_id: query = query.filter(Sorusturma.personel_id == personel_id)
+    if baslangic_tarihi_str:
+        baslangic_tarihi = datetime.strptime(baslangic_tarihi_str, '%Y-%m-%d')
+        query = query.filter(Sorusturma.olusturma_tarihi >= baslangic_tarihi)
+    if bitis_tarihi_str:
+        bitis_tarihi = datetime.strptime(bitis_tarihi_str, '%Y-%m-%d')
+        query = query.filter(Sorusturma.olusturma_tarihi <= bitis_tarihi.replace(hour=23, minute=59, second=59))
+    sorusturmalar_listesi = query.order_by(Sorusturma.olusturma_tarihi.desc()).all()
+    sonuc = []
+    for sorusturma in sorusturmalar_listesi:
+        personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
+        sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'hakkindaki_personel': personel_adi})
+    return jsonify(sonuc), 200
 
 @app.route('/init-db-and-users')
 def init_db():
