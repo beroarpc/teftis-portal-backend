@@ -14,6 +14,15 @@ from datetime import datetime
 
 app = Flask(__name__)
 
+origins = [
+    "https://teftis-portal-frontend.vercel.app",
+    "https://teftis-portal-frontend-mzj1.vercel.app", # Eski adresler de kalsın
+    "https://teftis-portal-frontend-5u7j.vercel.app", # Eski adresler de kalsın
+    "http://localhost:3000"
+]
+CORS(app, resources={r"/api/*": {"origins": origins}, r"/login": {"origins": origins}, r"/dashboard-data": {"origins": origins}}, supports_credentials=True)
+
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'default-guvensiz-anahtar')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
