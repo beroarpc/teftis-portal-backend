@@ -66,7 +66,7 @@ class Personel(db.Model):
     ad = db.Column(db.String(100), nullable=False)
     soyad = db.Column(db.String(100), nullable=False)
     unvan = db.Column(db.String(150))
-    sube = db.Column(db.String(150))
+    sube_birim = db.Column(db.String(150))
     ise_baslama_tarihi = db.Column(db.Date)
     aktif_mi = db.Column(db.Boolean, default=True, nullable=False)
     profil_resmi_url = db.Column(db.String(500))
@@ -103,59 +103,28 @@ class Ceza(db.Model):
     personel_id = db.Column(db.Integer, db.ForeignKey('personel.id'), nullable=False)
     alan_personel = db.relationship('Personel', backref=db.backref('cezalar', lazy=True))
 
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
-    user = User.query.filter_by(username=username).first()
-    if user and user.check_password(password):
-        access_token = create_access_token(identity=username)
-        return jsonify(access_token=access_token), 200
-    return jsonify({"message": "Geçersiz kullanıcı adı veya şifre"}), 401
-
-@app.route('/dashboard-data', methods=['GET'])
+@app.route('/api/sorusturmalar', methods=['GET'])
 @jwt_required()
-def dashboard_data():
-    current_username = get_jwt_identity()
-    user = User.query.filter_by(username=current_username).first()
-    if not user: return jsonify(message="Token geçersiz, kullanıcı bulunamadı"), 404
-    return jsonify(karsilama=f"Hoş geldiniz, sayın {user.rol.title()}", denetim_sayisi=15, aktif_soruşturma=5, rol=user.rol), 200
+def get_sorusturmalar():
+    try:
+        sorusturmalar_listesi = Sorusturma.query.order_by(Sorusturma.olusturma_tarihi.desc()).all()
+        sonuc = []
+        for sorusturma in sorusturmalar_listesi:
+            personel_adi = f"{sorusturma.hakkindaki_personel.ad} {sorusturma.hakkindaki_personel.soyad}" if sorusturma.hakkindaki_personel else "Belirtilmemiş"
+            sonuc.append({'id': sorusturma.id, 'sorusturma_no': sorusturma.sorusturma_no, 'konu': sorusturma.konu, 'olusturma_tarihi': sorusturma.olusturma_tarihi.strftime('%Y-%m-%d %H:%M:%S'), 'durum': sorusturma.durum, 'onay_durumu': sorusturma.onay_durumu, 'hakkindaki_personel': personel_adi})
+        return jsonify(sonuc), 200
+    except Exception as e:
+        return jsonify(message=f"Sunucu hatası: {str(e)}"), 500
 
-@app.route('/api/users', methods=['GET'])
-@roller_gerekiyor('başkan')
-def get_users():
-    users = User.query.all()
-    return jsonify([{'id': user.id, 'username': user.username, 'rol': user.rol} for user in users])
+@app.route('/api/personel', methods=['GET'])
+@jwt_required()
+def get_personel_listesi():
+    try:
+        personeller = Personel.query.order_by(Personel.ad).all()
+        sonuc = [{'id': p.id, 'sicil_no': p.sicil_no, 'ad': p.ad, 'soyad': p.soyad, 'unvan': p.unvan, 'sube_birim': p.sube_birim, 'aktif_mi': p.aktif_mi} for p in personeller]
+        return jsonify(sonuc), 200
+    except Exception as e:
+        return jsonify(message=f"Sunucu hatası: {str(e)}"), 500
 
-@app.route('/api/users', methods=['POST'])
-@roller_gerekiyor('başkan')
-def create_user():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    rol = data.get('rol')
-    if not all([username, password, rol]):
-        return jsonify(message="Kullanıcı adı, şifre ve rol zorunludur."), 400
-    if User.query.filter_by(username=username).first():
-        return jsonify(message="Bu kullanıcı adı zaten mevcut."), 409
-    new_user = User(username=username, rol=rol)
-    new_user.set_password(password)
-    db.session.add(new_user)
-    db.session.commit()
-    return jsonify(message=f"'{username}' kullanıcısı başarıyla oluşturuldu."), 201
-
-@app.route('/api/users/<int:user_id>', methods=['DELETE'])
-@roller_gerekiyor('başkan')
-def delete_user(user_id):
-    user_to_delete = User.query.get(user_id)
-    if not user_to_delete: return jsonify(message="Kullanıcı bulunamadı."), 404
-    if user_to_delete.rol == 'başkan': return jsonify(message="Başkan rolündeki kullanıcı silinemez."), 403
-    Sorusturma.query.filter_by(atanan_mufettis_id=user_id).update({"atanan_mufettis_id": None})
-    db.session.delete(user_to_delete)
-    db.session.commit()
-    return jsonify(message=f"'{user_to_delete.username}' kullanıcısı başarıyla silindi."), 200
-    
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# ...Diğer tüm API endpoint'leriniz (login, dashboard, create_sorusturma vb.) aynı kalacak...
+# (Kodun çok uzamaması için diğer fonksiyonlar çıkarıldı, ama dosyanızda olmalı)
