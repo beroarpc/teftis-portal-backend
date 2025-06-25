@@ -35,7 +35,6 @@ origins = [
 ]
 CORS(app, resources={r"/*": {"origins": origins}}, supports_credentials=True)
 
-
 def roller_gerekiyor(*roller):
     def wrapper(fn):
         @wraps(fn)
@@ -104,7 +103,6 @@ class Ceza(db.Model):
     personel_id = db.Column(db.Integer, db.ForeignKey('personel.id'), nullable=False)
     alan_personel = db.relationship('Personel', backref=db.backref('cezalar', lazy=True))
 
-
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -116,26 +114,48 @@ def login():
         return jsonify(access_token=access_token), 200
     return jsonify({"message": "Geçersiz kullanıcı adı veya şifre"}), 401
 
+@app.route('/dashboard-data', methods=['GET'])
+@jwt_required()
+def dashboard_data():
+    current_username = get_jwt_identity()
+    user = User.query.filter_by(username=current_username).first()
+    if not user: return jsonify(message="Token geçersiz, kullanıcı bulunamadı"), 404
+    return jsonify(karsilama=f"Hoş geldiniz, sayın {user.rol.title()}", denetim_sayisi=15, aktif_soruşturma=5, rol=user.rol), 200
 
-@app.route('/api/sorusturmalar/<int:sorusturma_id>/ceza-ekle', methods=['POST'])
+@app.route('/api/users', methods=['GET'])
 @roller_gerekiyor('başkan')
-def add_ceza_to_sorusturma(sorusturma_id):
-    sorusturma = Sorusturma.query.get(sorusturma_id)
-    if not sorusturma: return jsonify(message="Soruşturma bulunamadı."), 404
-    if not sorusturma.hakkindaki_personel: return jsonify(message="Bu soruşturma bir personele bağlı değil, ceza eklenemez."), 400
+def get_users():
+    users = User.query.all()
+    return jsonify([{'id': user.id, 'username': user.username, 'rol': user.rol} for user in users])
+
+@app.route('/api/users', methods=['POST'])
+@roller_gerekiyor('başkan')
+def create_user():
     data = request.get_json()
-    ceza_turu = data.get('ceza_turu')
-    verilme_tarihi_str = data.get('verilme_tarihi')
-    aciklama = data.get('aciklama')
-    if not all([ceza_turu, verilme_tarihi_str]): return jsonify(message="Ceza türü ve verilme tarihi zorunludur."), 400
-    try:
-        verilme_tarihi = datetime.strptime(verilme_tarihi_str, '%Y-%m-%d').date()
-    except ValueError:
-        return jsonify(message="Tarih formatı geçersiz. Lütfen YYYY-MM-DD formatında girin."), 400
-    yeni_ceza = Ceza(ceza_turu=ceza_turu, aciklama=aciklama, verilme_tarihi=verilme_tarihi, sorusturma_id=sorusturma.id, personel_id=sorusturma.personel_id)
-    db.session.add(yeni_ceza)
+    username = data.get('username')
+    password = data.get('password')
+    rol = data.get('rol')
+    if not all([username, password, rol]):
+        return jsonify(message="Kullanıcı adı, şifre ve rol zorunludur."), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify(message="Bu kullanıcı adı zaten mevcut."), 409
+    new_user = User(username=username, rol=rol)
+    new_user.set_password(password)
+    db.session.add(new_user)
     db.session.commit()
-    return jsonify(message="Ceza başarıyla eklendi."), 201
+    return jsonify(message=f"'{username}' kullanıcısı başarıyla oluşturuldu."), 201
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@roller_gerekiyor('başkan')
+def delete_user(user_id):
+    user_to_delete = User.query.get(user_id)
+    if not user_to_delete: return jsonify(message="Kullanıcı bulunamadı."), 404
+    if user_to_delete.rol == 'başkan': return jsonify(message="Başkan rolündeki kullanıcı silinemez."), 403
+    Sorusturma.query.filter_by(atanan_mufettis_id=user_id).update({"atanan_mufettis_id": None})
+    db.session.delete(user_to_delete)
+    db.session.commit()
+    return jsonify(message=f"'{user_to_delete.username}' kullanıcısı başarıyla silindi."), 200
+    
 
 if __name__ == "__main__":
     app.run(debug=True)
